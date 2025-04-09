@@ -87,6 +87,19 @@ for j in range(nt):
     H[:,j+1]=C
     Hflux[:,j+1]=Cflux
     Cold[:]=C
+    
+# Resolver desplazamientos debido a la concentración de hidrógeno
+for i in range(1, n - 1):
+    rhsDisp[i] = C[i] * (1 - nu) / ((1 + nu) * E)
+U = solve_banded((1, 1), ADisp, rhsDisp)
+
+# Calcular esfuerzos radial (Sr) y tangencial (St)
+for i in range(1, n - 1):
+    du_dr = (U[i + 1] - U[i - 1]) / (2 * dr)
+    u_r = U[i] / r[i]
+    Sr[i] = E / (1 - nu**2) * (du_dr + nu * u_r)
+    St[i] = E / (1 - nu**2) * (u_r + nu * du_dr)
+
 #post processing de flujos totales    
 tot_flux_in=0
 tot_flux_out=0
