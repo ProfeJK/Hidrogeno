@@ -24,7 +24,7 @@ dr=(Ro-Ri)/(n-1)
 #dt=0.083
 #S=31536000 # seconds in a year
 S=60*60 # seconds per hour
-t_end=5.0
+t_end=5.0 * 3600 # 5 Horas en segundos
 #nt=int(t_end/dt)
 nt=1000
 dt=t_end/(nt-1)
@@ -58,28 +58,38 @@ Hflux[:,0]=0
 
 # modelo de difusion y matrices para ambos problemas
 for i in range(1,n-1):
-    A[1+i-i,i]=-2*S*D/dr**2-1/dt
-    A[1+i-(i+1),i+1]=S*D/dr**2+S*D/(2*r[i]*dr)
-    A[1+i-(i-1),i-1]=S*D/dr**2-S*D/(2*r[i]*dr)
-    ADisp[2+i-(i+1),i+1]=1/dr**2+1/(2*r[i]*dr)
-    ADisp[2+i-(i-1),i-1]=1/dr**2-1/(2*r[i]*dr)
-    ADisp[2+i-i,i]=-2/dr**2-1./r[i]**2
-A[1+0-0,0]=1 
-A[1+n-1-(n-1),n-1]=1
-ADisp[2+0-0,0]=-3*(nu-1.)/(2*dr)-nu/r[0]
-ADisp[2+0-1,1]=4*(nu-1.)/(2*dr)
-ADisp[2+0-2,2]=-(nu-1.)/(2*dr)
-ADisp[2+n-1-(n-3),n-3]=(nu-1.)/(2*dr)
-ADisp[2+n-1-(n-2),n-2]=-4*(nu-1.)/(2*dr)
-ADisp[2+n-1-(n-1),n-1]=3*(nu-1.)/(2*dr)-nu/r[n-1]
+    A[0, i + 1] = D / dr**2 + D / (2 * r[i] * dr)  # Superdiagonal (i, i+1)
+    A[1, i] = -2 * D / dr**2 - 1 / dt  # Diagonal principal (i, i)
+    A[2, i - 1] = D / dr**2 - D / (2 * r[i] * dr)  # Subdiagonal (i, i-1)
+# Condiciones de frontera para difusión
+A[1, 0] = 1  # Condición Dirichlet en r=Ri
+A[1, n - 1] = 1  # Condición Dirichlet en r=Ro
+A[0, 1] = 0  # Anular términos fuera de la banda
+A[2, n - 2] = 0  # Anular términos fuera de la banda
+
+for i in range(1, n - 1):
+    ADisp[1, i + 1] = 1 / dr**2 + 1 / (2 * r[i] * dr)  # Superdiagonal +1
+    ADisp[2, i] = -2 / dr**2 - 1 / r[i]**2  # Diagonal principal
+    ADisp[3, i - 1] = 1 / dr**2 - 1 / (2 * r[i] * dr)  # Subdiagonal -1
+
+# Condiciones de frontera para desplazamiento
+# Frontera izquierda (r=Ri)
+ADisp[2, 0] = -3 * (nu - 1) / (2 * dr) - nu / r[0]  # Diagonal principal
+ADisp[3, 1] = 4 * (nu - 1) / (2 * dr)  # Superdiagonal +1
+ADisp[4, 2] = -(nu - 1) / (2 * dr)  # Superdiagonal +2
+
+# Frontera derecha (r=Ro)
+ADisp[0, n - 3] = (nu - 1) / (2 * dr)  # Subdiagonal -2
+ADisp[1, n - 2] = -4 * (nu - 1) / (2 * dr)  # Subdiagonal -1
+ADisp[2, n - 1] = 3 * (nu - 1) / (2 * dr) - nu / r[n - 1]  # Diagonal principal
 
 
 for j in range(nt):
-    for i in range(1,n-1):
-        rhs[i]=-Cold[i]/dt
+    rhs[i]=-Cold[i]/dt
     rhs[0]=Cin
     rhs[n-1]=Cout
     C=solve_banded((1,1),A,rhs)
+
     for i in range(1,n-1): # post processing de flujos
         Cflux[i]=-2.0*np.pi*r[i]*D*(C[i+1]-C[i-1])/(2*dr)
     Cflux[0]=-2.0*np.pi*r[0]*D*(-3*C[0]+4*C[1]-C[2])/(2*dr)  
@@ -101,11 +111,8 @@ for i in range(1, n - 1):
     St[i] = E / (1 - nu**2) * (u_r + nu * du_dr)
 
 #post processing de flujos totales    
-tot_flux_in=0
-tot_flux_out=0
-for i in range(nt):
-    tot_flux_in+=0.5*(Hflux[0,i]+Hflux[0,i+1])*S*dt
-    tot_flux_out+=0.5*(Hflux[n-1,i]+Hflux[n-1,i+1])*S*dt
+tot_flux_in = np.trapezoid(Hflux[0, :], t)
+tot_flux_out = np.trapezoid(Hflux[-1, :], t)
 
 # modelo de esfuerzos    
 for j in range(nt+1):
@@ -121,44 +128,45 @@ for j in range(nt+1):
     for i in range(n):
         if i>0 and i<n-1:
             epsi_r[i]=(Disp[i+1]-Disp[i-1])/(2*dr)
-        if i==0:
+        elif i==0:
             epsi_r[i]=(-3*Disp[i]+4*Disp[i+1]-Disp[i+2] )/(2*dr)
-        if i==n-1:    
+        else: #if i==n-1:    
             epsi_r[i]=(3*Disp[i]-4*Disp[i-1]+Disp[i-2] )/(2*dr)
         sigma_r[i]=(E/((1.+nu)*(2.*nu-1.)))*\
-        ((nu-1.)*epsi_r[i]-nu*epsi_t[i]+(1./3.)*Omega*C[i])
+                    ((nu-1.)*epsi_r[i]-nu*epsi_t[i]+(1./3.)*Omega*C[i])
         sigma_t[i]=(E/((1.+nu)*(2.*nu-1.)))*\
-        ((nu-1.)*epsi_t[i]-nu*epsi_r[i]+(1./3.)*Omega*C[i])
+                    ((nu-1.)*epsi_t[i]-nu*epsi_r[i]+(1./3.)*Omega*C[i])
     HStress_r[:,j]=sigma_r
     HStress_t[:,j]=sigma_t
     HStrain_r[:,j]=epsi_r
     HStrain_t[:,j]=epsi_t
 
-    
+
+hours = t / 3600
 #grafica Concentracion vs r para cada tiempo    
 plt.figure()
 for i in range(0,nt+1,1):
-    plt.plot(r*1e3,H[:,i],label=f't={i*dt:.1f} years') 
+    plt.plot(r*1e3,H[:,i],label=f't={hours[i]:.1f} years') 
 plt.xlabel('r [mm]')
 plt.ylabel('C') 
 plt.legend(loc='upper left', bbox_to_anchor=(1, 1))
-    
+plt.title('Concentración vs radio')    
 #grafica concentracion vs tiempo para cada radio
 plt.figure()
 for i in range(0,n,10):
-    plt.plot(t[:],H[i,:],label=f'r={i*dr*1e3:.1f} mm') 
+    plt.plot(t[:],H[i,:],label=f'r={hours[i]*1e3:.1f} mm') 
 plt.xlabel('t [years]')
 plt.ylabel('C')
 plt.legend(loc='upper left', bbox_to_anchor=(1, 1))
-
+plt.title('concentracion vs tiempo')
 #grafica flujo vs r para cada tiempo
 plt.figure()
 for i in range(0,nt+1,1):
-    plt.plot(r*1e3,Hflux[:,i],label=f't={i*dt:.1f} years') 
+    plt.plot(r*1e3,Hflux[:,i],label=f't={hours[i]:.1f} years') 
 plt.xlabel('r [mm]')
 plt.ylabel('Flux $m^3/s$') 
 plt.legend(loc='upper left', bbox_to_anchor=(1, 1))
-
+plt.title('flujo vs radio')
 #grafica flujos en radio interno y externo vs tiempo
 plt.figure()
 plt.plot(t,Hflux[0,:],label=f'inner radius flow') 
@@ -166,11 +174,11 @@ plt.plot(t,Hflux[n-1,:],label=f'outer radius flow')
 plt.xlabel('t [years]')
 plt.ylabel('Flux $m^3/s$') 
 plt.legend(loc='upper right')
-
+plt.title('flujos en radio interno y externo vs tiempo')
 #grafica desplazamiento vs radio para cada tiempo
 plt.figure()
 for i in range(0,nt+1,20):
-    plt.plot(r*1e3,HDisp[:,i]*1e3,label=f't={i*dt:.1f} years') 
+    plt.plot(r*1e3,HDisp[:,i]*1e3,label=f't={hours[i]:.1f} years') 
 plt.xlabel('r [mm]')
 plt.ylabel('u [mm]') 
 plt.legend(loc='upper left', bbox_to_anchor=(1, 1))
@@ -178,7 +186,7 @@ plt.legend(loc='upper left', bbox_to_anchor=(1, 1))
 #grafica sigma_r vs radio para cada tiempo
 plt.figure()
 for i in range(0,nt+1,1):
-    plt.plot(r*1e3,HStress_r[:,i],label=f't={i*dt:.1f} years') 
+    plt.plot(r*1e3,HStress_r[:,i],label=f't={hours[i]:.1f} years') 
 plt.xlabel('r [mm]')
 plt.ylabel('$\sigma_r$ [Pa]') 
 plt.legend(loc='upper left', bbox_to_anchor=(1, 1))
@@ -186,7 +194,7 @@ plt.legend(loc='upper left', bbox_to_anchor=(1, 1))
 #grafica sigma_t vs radio para cada tiempo
 plt.figure()
 for i in range(0,nt+1,1):
-    plt.plot(r*1e3,HStress_t[:,i],label=f't={i*dt:.1f} years') 
+    plt.plot(r*1e3,HStress_t[:,i],label=f't={hours[i]:.1f} years') 
 plt.xlabel('r [mm]')
 plt.ylabel(r'$\sigma_\theta$ [Pa]')  
 #https://stackoverflow.com/questions/10370760/matplotlib-axis-label-theta-does-not-work-theta-does
@@ -196,7 +204,7 @@ plt.legend(loc='upper left', bbox_to_anchor=(1, 1))
 #grafica epsilon_r vs radio para cada tiempo
 plt.figure()
 for i in range(0,nt+1,20):
-    plt.plot(r*1e3,HStrain_r[:,i],label=f't={i*dt:.1f} years') 
+    plt.plot(r*1e3,HStrain_r[:,i],label=f't={hours[i]:.1f} years') 
 plt.xlabel('r [mm]')
 plt.ylabel(r'$\epsilon_r$') 
 plt.legend(loc='upper left', bbox_to_anchor=(1, 1))
@@ -204,7 +212,7 @@ plt.legend(loc='upper left', bbox_to_anchor=(1, 1))
 #grafica epsilon_t vs radio para cada tiempo
 plt.figure()
 for i in range(0,nt+1,20):
-    plt.plot(r*1e3,HStrain_t[:,i],label=f't={i*dt:.1f} years') 
+    plt.plot(r*1e3,HStrain_t[:,i],label=f't={hours[i]:.1f} years') 
 plt.xlabel('r [mm]')
 plt.ylabel(r'$\epsilon_\theta$') 
 plt.legend(loc='upper left', bbox_to_anchor=(1, 1))
