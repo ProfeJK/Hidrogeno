@@ -91,14 +91,23 @@ for j in range(nt):
 # Resolver desplazamientos debido a la concentración de hidrógeno
 for i in range(1, n - 1):
     rhsDisp[i] = C[i] * (1 - nu) / ((1 + nu) * E)
-U = solve_banded((1, 1), ADisp, rhsDisp)
+U = solve_banded((2, 2), ADisp, rhsDisp)
 
 # Calcular esfuerzos radial (Sr) y tangencial (St)
 for i in range(1, n - 1):
     du_dr = (U[i + 1] - U[i - 1]) / (2 * dr)
     u_r = U[i] / r[i]
-    Sr[i] = E / (1 - nu**2) * (du_dr + nu * u_r)
-    St[i] = E / (1 - nu**2) * (u_r + nu * du_dr)
+    sigma_r[i] = E / (1 - nu**2) * (du_dr + nu * u_r)
+    sigma_t[i] = E / (1 - nu**2) * (u_r + nu * du_dr)
+
+plt.plot(r, sigma_r, label='Esfuerzo radial')
+plt.plot(r, sigma_t, label='Esfuerzo tangencial')
+plt.xlabel('Radio [m]')
+plt.ylabel('Esfuerzo [Pa]')
+plt.title('Distribución de esfuerzos inducidos por el hidrógeno')
+plt.legend()
+plt.grid()
+plt.show()
 
 #post processing de flujos totales    
 tot_flux_in=0
